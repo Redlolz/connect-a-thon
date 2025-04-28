@@ -13,6 +13,7 @@ type UIComponentType int64
 
 const (
 	UIComponentLabel UIComponentType = iota
+	UIComponentImage
 	UIComponentButton
 	UIComponentInputField
 	UIComponentComboBox
@@ -171,6 +172,19 @@ func (win *UIWindow) AddLabel(text string) {
 	}
 
 	win.addComponent(&label)
+}
+
+func (win *UIWindow) AddImage(img *sdl.Texture, w, h int32) {
+	image := UIComponent{
+		Type:    UIComponentImage,
+		w:       w,
+		h:       h,
+		x:       win.nextX(),
+		y:       win.nextY(),
+		texture: img,
+	}
+
+	win.addComponent(&image)
 }
 
 func (win *UIWindow) AddButton(text string, callback func(*UIWindow)) {
@@ -334,6 +348,13 @@ func (win *UIWindow) RenderWindow() {
 			text := ttf.CreateText(win.ui.TextEngine, win.ui.Font, c.Text, 0)
 			ttf.DrawRendererText(text, float32(x+c.x), float32(y+c.y))
 			ttf.DestroyText(text)
+		case UIComponentImage:
+			sdl.RenderTexture(win.ui.Renderer, c.texture, nil, &sdl.FRect{
+				X: float32(x + c.x),
+				Y: float32(y + c.y),
+				W: float32(c.w),
+				H: float32(c.h),
+			})
 		case UIComponentButton:
 			rect := sdl.FRect{
 				X: float32(x + c.x),

@@ -8,6 +8,7 @@ import (
 	"unsafe"
 
 	"github.com/google/uuid"
+	"github.com/jupiterrider/purego-sdl3/img"
 	"github.com/jupiterrider/purego-sdl3/sdl"
 	"github.com/jupiterrider/purego-sdl3/ttf"
 )
@@ -181,6 +182,22 @@ func (ui *UI) OpenWindowEdit(e *conatho.Entity) {
 
 	editwin := ui.CreateWindow(100, 100, 200, 200)
 	editwin.SetCenter(true)
+
+	image, err := e.EntityGetImage()
+	if err == nil {
+		iostream := sdl.IOFromConstMem(image)
+		texture := img.LoadTextureIO(ui.Renderer, iostream, true)
+
+		displayWidth := int32(256)
+		displayHeight := int32(256)
+		if texture.W > texture.H {
+			displayHeight = int32(float32(texture.H) / float32(texture.W) * float32(displayWidth))
+		} else if texture.H > texture.W {
+			displayWidth = int32(float32(texture.W) / float32(texture.H) * float32(displayHeight))
+		}
+
+		editwin.AddImage(texture, displayWidth, displayHeight)
+	}
 
 	attributes, err := e.GetAttributes()
 	if err != nil {

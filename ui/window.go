@@ -19,39 +19,53 @@ const (
 )
 
 type UIComponent struct {
-	Type   UIComponentType
-	W      int32
-	H      int32
-	Text   string
-	Button struct {
-		Callback func(*UIWindow)
-	}
-	InputField struct {
-		Identifier string
-		Input      string
-		texture    *sdl.Texture
-	}
-	ComboBox struct {
-		Identifier  string
-		Options     map[int64]string
-		OptionsKeys []int64
-		selected    int64
-		texture     *sdl.Texture
-	}
+	Type UIComponentType
+
+	x int32
+	y int32
+	w int32
+	h int32
+
+	Text       string
+	Identifier string
+	texture    *sdl.Texture
+
+	// 	UIComponentButton
+	Callback func(*UIWindow)
+	// UIComponentInputField
+	Input string
+	//UIComponentComboBox
+	Options     map[int64]string
+	OptionsKeys []int64
+	selected    int64
+}
+
+type hitbox struct {
+	component *UIComponent
+	x1        int32
+	y1        int32
+	x2        int32
+	y2        int32
 }
 
 type UIWindow struct {
 	ui *UI
 
-	X       int32
-	Y       int32
-	W       int32
-	H       int32
-	Padding int32
+	X int32
+	Y int32
+	W int32
+	H int32
 
-	Center bool
+	WindowPadding    int32
+	ComponentPadding int32
+	ComponentMargin  int32
+
+	AutoWidth  bool
+	AutoHeight bool
+	Center     bool
 
 	Components []*UIComponent
+	hitboxes   []hitbox
 
 	focus    *UIComponent
 	focusY   int32
@@ -62,34 +76,83 @@ type UIWindow struct {
 
 func (ui *UI) CreateWindow(x, y, w, h int32) *UIWindow {
 	win := UIWindow{
-		ui:      ui,
-		X:       x,
-		Y:       y,
-		W:       w,
-		H:       h,
-		Padding: 4,
-		Center:  false,
+		ui:              ui,
+		X:               x,
+		Y:               y,
+		W:               w,
+		H:               h,
+		WindowPadding:   4,
+		Center:          false,
+		AutoWidth:       true,
+		AutoHeight:      true,
+		ComponentMargin: 4,
 	}
 	return &win
 }
 
 func (win *UIWindow) Destroy() {
 	for _, c := range win.Components {
-		switch c.Type {
-		case UIComponentInputField:
-			if c.InputField.texture != nil {
-				sdl.DestroyTexture(c.InputField.texture)
-			}
-		case UIComponentComboBox:
-			if c.ComboBox.texture != nil {
-				sdl.DestroyTexture(c.ComboBox.texture)
-			}
+		if c.texture != nil {
+			sdl.DestroyTexture(c.texture)
 		}
 	}
 }
 
 func (win *UIWindow) SetCenter(state bool) {
 	win.Center = state
+}
+
+func (win *UIWindow) nextX() int32 {
+	if len(win.Components) == 0 {
+		return win.WindowPadding
+	}
+
+	lastComponent := win.Components[len(win.Components)-1]
+	if lastComponent.Type == UIComponentButton {
+		return lastComponent.x + lastComponent.w + win.ComponentMargin
+	}
+	return win.WindowPadding
+}
+
+func (win *UIWindow) nextY() int32 {
+	if len(win.Components) == 0 {
+		return win.WindowPadding + win.ComponentMargin
+	}
+
+	lastComponent := win.Components[len(win.Components)-1]
+	if lastComponent.Type == UIComponentButton {
+		return lastComponent.y
+	}
+	return lastComponent.y + lastComponent.h + win.ComponentMargin
+}
+
+func (win *UIWindow) addComponent(component *UIComponent) {
+	if win.AutoWidth {
+		if len(win.Components) == 0 {
+			win.W = 0
+		}
+		if win.WindowPadding*2+component.x+component.w > win.W {
+			win.W = component.x + component.w + win.WindowPadding*2
+		}
+	}
+	if win.AutoHeight {
+		if len(win.Components) == 0 {
+			win.H = 0
+		}
+		win.H += component.h + win.ComponentMargin/2
+	}
+
+	if component.Type != UIComponentLabel {
+		win.hitboxes = append(win.hitboxes, hitbox{
+			component: component,
+			x1:        component.x,
+			y1:        component.y,
+			x2:        component.x + component.w,
+			y2:        component.y + component.h,
+		})
+	}
+
+	win.Components = append(win.Components, component)
 }
 
 func (win *UIWindow) AddLabel(text string) {
@@ -100,11 +163,14 @@ func (win *UIWindow) AddLabel(text string) {
 
 	label := UIComponent{
 		Type: UIComponentLabel,
-		W:    w,
-		H:    h,
+		w:    w,
+		h:    h,
+		x:    win.nextX(),
+		y:    win.nextY(),
 		Text: text,
 	}
-	win.Components = append(win.Components, &label)
+
+	win.addComponent(&label)
 }
 
 func (win *UIWindow) AddButton(text string, callback func(*UIWindow)) {
@@ -114,33 +180,39 @@ func (win *UIWindow) AddButton(text string, callback func(*UIWindow)) {
 	ttf.GetStringSize(win.ui.Font, text, 0, &w, &h)
 
 	button := UIComponent{
-		Type: UIComponentButton,
-		W:    w,
-		H:    h,
-		Text: text,
+		Type:     UIComponentButton,
+		w:        w,
+		h:        h,
+		x:        win.nextX(),
+		y:        win.nextY(),
+		Text:     text,
+		Callback: callback,
 	}
-	button.Button.Callback = callback
-	win.Components = append(win.Components, &button)
+
+	win.addComponent(&button)
 }
 
 func (win *UIWindow) AddInputField(identifier string) *UIComponent {
 	h := ttf.GetFontHeight(win.ui.Font)
 
 	inputField := UIComponent{
-		Type: UIComponentInputField,
-		W:    0,
-		H:    h,
+		Type:       UIComponentInputField,
+		w:          200,
+		h:          h,
+		x:          win.nextX(),
+		y:          win.nextY(),
+		Identifier: identifier,
 	}
-	inputField.InputField.Identifier = identifier
-	win.Components = append(win.Components, &inputField)
+
+	win.addComponent(&inputField)
 
 	return &inputField
 }
 
 func (win *UIWindow) GetInputField(identifier string) string {
 	for _, c := range win.Components {
-		if c.Type == UIComponentInputField && c.InputField.Identifier == identifier {
-			return c.InputField.Input
+		if c.Type == UIComponentInputField && c.Identifier == identifier {
+			return c.Input
 		}
 	}
 	return ""
@@ -148,11 +220,11 @@ func (win *UIWindow) GetInputField(identifier string) string {
 
 func (win *UIWindow) SetInputField(identifier string, value string) bool {
 	for _, c := range win.Components {
-		if c.Type == UIComponentInputField && c.InputField.Identifier == identifier {
-			c.InputField.Input = value
+		if c.Type == UIComponentInputField && c.Identifier == identifier {
+			c.Input = value
 
-			surface := ttf.RenderTextBlended(win.ui.Font, c.InputField.Input, 0, sdl.Color{R: 255, G: 255, B: 255, A: 255})
-			c.InputField.texture = sdl.CreateTextureFromSurface(win.ui.Renderer, surface)
+			surface := ttf.RenderTextBlended(win.ui.Font, c.Input, 0, sdl.Color{R: 255, G: 255, B: 255, A: 255})
+			c.texture = sdl.CreateTextureFromSurface(win.ui.Renderer, surface)
 			sdl.DestroySurface(surface)
 
 			return true
@@ -163,64 +235,73 @@ func (win *UIWindow) SetInputField(identifier string, value string) bool {
 
 func (win *UIWindow) AddComboBox(identifier string, options map[int64]string) (*UIComponent, error) {
 	comboBox := UIComponent{
-		Type: UIComponentComboBox,
-		W:    0,
-		H:    0,
+		Type:       UIComponentComboBox,
+		w:          0,
+		h:          ttf.GetFontHeight(win.ui.Font),
+		x:          win.nextX(),
+		y:          win.nextY(),
+		Identifier: identifier,
+		Options:    options,
 	}
-	comboBox.ComboBox.Identifier = identifier
-	comboBox.ComboBox.Options = options
 
-	comboBox.ComboBox.OptionsKeys = make([]int64, 0, len(comboBox.ComboBox.Options))
-	for k := range comboBox.ComboBox.Options {
-		comboBox.ComboBox.OptionsKeys = append(comboBox.ComboBox.OptionsKeys, k)
+	comboBox.OptionsKeys = make([]int64, 0, len(comboBox.Options))
+	for k := range comboBox.Options {
+		comboBox.OptionsKeys = append(comboBox.OptionsKeys, k)
 	}
 
 	// Sort keys
-	sort.Slice(comboBox.ComboBox.OptionsKeys, func(i, j int) bool {
-		return comboBox.ComboBox.OptionsKeys[i] < comboBox.ComboBox.OptionsKeys[j]
+	sort.Slice(comboBox.OptionsKeys, func(i, j int) bool {
+		return comboBox.OptionsKeys[i] < comboBox.OptionsKeys[j]
 	})
 
 	// Create textures of text
 	var textTextures []*sdl.Texture
 	var totalHeight int32
-	for _, k := range comboBox.ComboBox.OptionsKeys {
-		surface := ttf.RenderTextBlended(win.ui.Font, comboBox.ComboBox.Options[k], 0, sdl.Color{R: 255, G: 255, B: 255, A: 255})
-		texture := sdl.CreateTextureFromSurface(win.ui.Renderer, surface)
-		if texture.W > comboBox.W {
-			comboBox.W = texture.W
+
+	for _, k := range comboBox.OptionsKeys {
+		surface := ttf.RenderTextBlended(win.ui.Font, comboBox.Options[k], 0, sdl.Color{R: 255, G: 255, B: 255, A: 255})
+		if surface != nil {
+			texture := sdl.CreateTextureFromSurface(win.ui.Renderer, surface)
+			if texture.W > comboBox.w {
+				comboBox.w = texture.W
+			}
+			textTextures = append(textTextures, texture)
+			sdl.DestroySurface(surface)
+		} else {
+			textTextures = append(textTextures, nil)
 		}
-		if texture.H > comboBox.H {
-			comboBox.H = texture.H
-		}
-		totalHeight += texture.H
-		textTextures = append(textTextures, texture)
-		sdl.DestroySurface(surface)
+		totalHeight += ttf.GetFontHeight(win.ui.Font)
 	}
 
-	comboBox.ComboBox.texture = sdl.CreateTexture(win.ui.Renderer, sdl.PixelFormatRGBA8888, sdl.TextureAccessTarget, comboBox.W, totalHeight)
-	sdl.SetRenderTarget(win.ui.Renderer, comboBox.ComboBox.texture)
+	comboBox.texture = sdl.CreateTexture(win.ui.Renderer, sdl.PixelFormatRGBA8888, sdl.TextureAccessTarget, comboBox.w, totalHeight)
+	sdl.SetRenderTarget(win.ui.Renderer, comboBox.texture)
 	sdl.SetRenderDrawColor(win.ui.Renderer, 0, 0, 0, 255)
 	sdl.RenderClear(win.ui.Renderer)
 	y := float32(0)
 	sdl.SetRenderDrawColor(win.ui.Renderer, 255, 255, 255, 255)
 	for _, s := range textTextures {
-		rect := sdl.FRect{X: 0, Y: y, W: float32(s.W), H: float32(s.H)}
-		sdl.RenderTexture(win.ui.Renderer, s, nil, &rect)
-		rect.W = float32(comboBox.W)
-		sdl.RenderRect(win.ui.Renderer, &rect)
-		y += float32(s.H)
+		if s != nil {
+			rect := sdl.FRect{X: 0, Y: y, W: float32(s.W), H: float32(s.H)}
+			sdl.RenderTexture(win.ui.Renderer, s, nil, &rect)
+			rect.W = float32(comboBox.w)
+			sdl.RenderRect(win.ui.Renderer, &rect)
+		} else {
+			rect := sdl.FRect{X: 0, Y: y, W: float32(comboBox.w), H: float32(ttf.GetFontHeight(win.ui.Font))}
+			rect.W = float32(comboBox.w)
+			sdl.RenderRect(win.ui.Renderer, &rect)
+		}
+		y += float32(ttf.GetFontHeight(win.ui.Font))
 	}
 	sdl.SetRenderTarget(win.ui.Renderer, nil)
 
-	win.Components = append(win.Components, &comboBox)
-
+	win.addComponent(&comboBox)
 	return &comboBox, nil
 }
 
 func (win *UIWindow) GetComboBox(identifier string) (int64, error) {
 	for _, c := range win.Components {
-		if c.Type == UIComponentComboBox && c.ComboBox.Identifier == identifier {
-			return c.ComboBox.OptionsKeys[c.ComboBox.selected], nil
+		if c.Type == UIComponentComboBox && c.Identifier == identifier {
+			return c.OptionsKeys[c.selected], nil
 		}
 	}
 	return 0, errors.New("combobox not found")
@@ -231,9 +312,6 @@ func (win *UIWindow) RenderWindow() {
 	y := win.Y
 	w := win.W
 	h := win.H
-
-	sdl.RenderDebugTextFormat(win.ui.Renderer, 0, 0, "ui.window: %p", win.ui.window)
-	sdl.RenderDebugTextFormat(win.ui.Renderer, 0, 8, "%d", sdl.GetTicksNS())
 
 	if win.Center {
 		var rendererW int32
@@ -250,20 +328,18 @@ func (win *UIWindow) RenderWindow() {
 	sdl.SetRenderDrawColor(win.ui.Renderer, 255, 255, 255, 255)
 	sdl.RenderRect(win.ui.Renderer, &winRect)
 
-	yOffset := float32(0 + win.Padding)
-
 	for _, c := range win.Components {
 		switch c.Type {
 		case UIComponentLabel:
 			text := ttf.CreateText(win.ui.TextEngine, win.ui.Font, c.Text, 0)
-			ttf.DrawRendererText(text, float32(x+win.Padding), float32(y)+yOffset)
+			ttf.DrawRendererText(text, float32(x+c.x), float32(y+c.y))
 			ttf.DestroyText(text)
 		case UIComponentButton:
 			rect := sdl.FRect{
-				X: float32(x + win.Padding),
-				Y: float32(y) + yOffset,
-				W: float32(c.W),
-				H: float32(c.H),
+				X: float32(x + c.x),
+				Y: float32(y + c.y),
+				W: float32(c.w),
+				H: float32(c.h),
 			}
 			sdl.RenderRect(win.ui.Renderer, &rect)
 
@@ -272,29 +348,29 @@ func (win *UIWindow) RenderWindow() {
 			ttf.DestroyText(text)
 		case UIComponentInputField:
 			rect := sdl.FRect{
-				X: float32(x + win.Padding),
-				Y: float32(y) + yOffset,
-				W: float32(w - win.Padding*2),
-				H: float32(c.H),
+				X: float32(x + c.x),
+				Y: float32(y + c.y),
+				W: float32(c.w),
+				H: float32(c.h),
 			}
 			sdl.RenderRect(win.ui.Renderer, &rect)
 
-			if len(c.InputField.Input) > 0 && c.InputField.texture == nil {
-				surface := ttf.RenderTextBlended(win.ui.Font, c.InputField.Input, 0, sdl.Color{R: 255, G: 255, B: 255, A: 255})
-				c.InputField.texture = sdl.CreateTextureFromSurface(win.ui.Renderer, surface)
+			if len(c.Input) > 0 && c.texture == nil {
+				surface := ttf.RenderTextBlended(win.ui.Font, c.Input, 0, sdl.Color{R: 255, G: 255, B: 255, A: 255})
+				c.texture = sdl.CreateTextureFromSurface(win.ui.Renderer, surface)
 				sdl.DestroySurface(surface)
 			}
 
-			if c.InputField.texture != nil {
+			if c.texture != nil {
 				srcRect := sdl.FRect{
 					X: 0,
 					Y: 0,
-					W: float32(c.InputField.texture.W),
-					H: float32(c.InputField.texture.H),
+					W: float32(c.texture.W),
+					H: float32(c.texture.H),
 				}
-				if c.InputField.texture.W > int32(rect.W) {
+				if c.texture.W > int32(rect.W) {
 					srcRect.W = rect.W
-					srcRect.X = float32(c.InputField.texture.W) - rect.W
+					srcRect.X = float32(c.texture.W) - rect.W
 				}
 				dstRect := sdl.FRect{
 					X: rect.X,
@@ -303,49 +379,35 @@ func (win *UIWindow) RenderWindow() {
 					H: srcRect.H,
 				}
 
-				sdl.RenderTexture(win.ui.Renderer, c.InputField.texture, &srcRect, &dstRect)
+				sdl.RenderTexture(win.ui.Renderer, c.texture, &srcRect, &dstRect)
 			}
 		case UIComponentComboBox:
 			srcRect := sdl.FRect{
 				X: 0,
-				Y: float32(c.ComboBox.selected * int64(c.H)),
-				W: float32(c.W),
-				H: float32(c.H),
+				Y: float32(c.selected * int64(c.h)),
+				W: float32(c.w),
+				H: float32(c.h),
 			}
 			dstRect := sdl.FRect{
-				X: float32(x + win.Padding),
-				Y: float32(y) + yOffset,
-				W: srcRect.W,
-				H: srcRect.H,
+				X: float32(x + c.x),
+				Y: float32(y + c.y),
+				W: float32(c.w),
+				H: float32(c.h),
 			}
-			sdl.RenderTexture(win.ui.Renderer, c.ComboBox.texture, &srcRect, &dstRect)
-
-			if win.focus == c {
-				sdl.RenderTexture(win.ui.Renderer, c.ComboBox.texture, nil, &sdl.FRect{
-					X: float32(x + win.Padding),
-					Y: float32(y+c.H) + yOffset,
-					W: float32(c.ComboBox.texture.W),
-					H: float32(c.ComboBox.texture.H),
-				})
-			}
+			sdl.RenderTexture(win.ui.Renderer, c.texture, &srcRect, &dstRect)
 		default:
 			panic("unknown UIComponent")
 		}
-
-		if win.focus == c {
-			win.focusY = int32(yOffset)
-		}
-		yOffset += float32(c.H)
 	}
 
 	if win.focus != nil {
 		switch win.focus.Type {
 		case UIComponentComboBox:
-			sdl.RenderTexture(win.ui.Renderer, win.focus.ComboBox.texture, nil, &sdl.FRect{
-				X: float32(x + win.Padding),
-				Y: float32(y + win.focus.H + win.focusY),
-				W: float32(win.focus.ComboBox.texture.W),
-				H: float32(win.focus.ComboBox.texture.H),
+			sdl.RenderTexture(win.ui.Renderer, win.focus.texture, nil, &sdl.FRect{
+				X: float32(x + win.focus.x),
+				Y: float32(y + win.focus.y + win.focus.h),
+				W: float32(win.focus.texture.W),
+				H: float32(win.focus.texture.H),
 			})
 		}
 	}
@@ -371,13 +433,13 @@ func (win *UIWindow) MouseDown(button uint8, mouseX, mouseY int32) {
 	if win.focus != nil {
 		switch win.focus.Type {
 		case UIComponentComboBox:
-			x1 := win.Padding
-			y1 := win.focusY + win.focus.H
-			x2 := x1 + win.focus.W
-			y2 := y1 + win.focus.ComboBox.texture.H
+			x1 := win.focus.x
+			y1 := win.focus.y + win.focus.h
+			x2 := x1 + win.focus.w
+			y2 := y1 + win.focus.texture.H
 
 			if actualX >= x1 && actualX < x2 && actualY >= y1 && actualY < y2 {
-				win.focus.ComboBox.selected = int64((actualY - y1) / win.focus.H)
+				win.focus.selected = int64((actualY - y1) / win.focus.h)
 				win.focus = nil
 				return
 			}
@@ -386,41 +448,21 @@ func (win *UIWindow) MouseDown(button uint8, mouseX, mouseY int32) {
 		sdl.StopTextInput(win.ui.Window)
 	}
 
-	yOffset := float32(0 + win.Padding)
-	for i, c := range win.Components {
-		switch c.Type {
-		case UIComponentButton:
-			x1 := win.Padding
-			y1 := int32(yOffset)
-			x2 := x1 + c.W
-			y2 := y1 + c.H
-			if actualX >= x1 && actualX <= x2 && actualY >= y1 && actualY <= y2 {
-				c.Button.Callback(win)
-				break
-			}
-		case UIComponentInputField:
-			x1 := win.Padding
-			y1 := int32(yOffset)
-			x2 := x1 + (w - win.Padding*2)
-			y2 := y1 + c.H
-			if actualX >= x1 && actualX <= x2 && actualY >= y1 && actualY <= y2 {
-				win.focus = win.Components[i]
-				win.textArea = sdl.Rect{X: x1 + 5, Y: y1, W: (w - win.Padding*2), H: c.H}
+	for _, c := range win.hitboxes {
+		if actualX >= c.x1 && actualX <= c.x2 && actualY >= c.y1 && actualY <= c.y2 {
+			switch c.component.Type {
+			case UIComponentButton:
+				c.component.Callback(win)
+			case UIComponentInputField:
+				win.focus = c.component
 				sdl.StartTextInput(win.ui.Window)
-				sdl.SetTextInputArea(win.ui.Window, &win.textArea, 1)
-				break
+				// win.textArea = sdl.Rect{X: x1 + 5, Y: y1, W: (w - win.WindowPadding*2), H: c.h}
+				// sdl.SetTextInputArea(win.ui.Window, &win.textArea, 1)
+			case UIComponentComboBox:
+				win.focus = c.component
 			}
-		case UIComponentComboBox:
-			x1 := win.Padding
-			y1 := int32(yOffset)
-			x2 := x1 + c.W
-			y2 := y1 + c.H
-			if actualX >= x1 && actualX <= x2 && actualY >= y1 && actualY <= y2 {
-				win.focus = win.Components[i]
-				break
-			}
+			break
 		}
-		yOffset += float32(c.H)
 	}
 }
 
@@ -435,16 +477,16 @@ func (win *UIWindow) KeyDown(key sdl.Keycode) {
 				return
 			case sdl.KeycodeBackspace:
 				// Removes last unicode character
-				if len(win.focus.InputField.Input) > 0 {
-					_, size := utf8.DecodeLastRuneInString(win.focus.InputField.Input)
-					win.focus.InputField.Input = win.focus.InputField.Input[:len(win.focus.InputField.Input)-size]
+				if len(win.focus.Input) > 0 {
+					_, size := utf8.DecodeLastRuneInString(win.focus.Input)
+					win.focus.Input = win.focus.Input[:len(win.focus.Input)-size]
 				}
 			default:
 				return
 			}
-			surface := ttf.RenderTextBlended(win.ui.Font, win.focus.InputField.Input, 0, sdl.Color{R: 255, G: 255, B: 255, A: 255})
-			sdl.DestroyTexture(win.focus.InputField.texture)
-			win.focus.InputField.texture = sdl.CreateTextureFromSurface(win.ui.Renderer, surface)
+			surface := ttf.RenderTextBlended(win.ui.Font, win.focus.Input, 0, sdl.Color{R: 255, G: 255, B: 255, A: 255})
+			sdl.DestroyTexture(win.focus.texture)
+			win.focus.texture = sdl.CreateTextureFromSurface(win.ui.Renderer, surface)
 			sdl.DestroySurface(surface)
 		}
 	} else {
@@ -458,10 +500,10 @@ func (win *UIWindow) KeyDown(key sdl.Keycode) {
 func (win *UIWindow) TextInput(text string) {
 	if win.focus != nil {
 		if win.focus.Type == UIComponentInputField {
-			win.focus.InputField.Input += text
-			surface := ttf.RenderTextBlended(win.ui.Font, win.focus.InputField.Input, 0, sdl.Color{R: 255, G: 255, B: 255, A: 255})
-			sdl.DestroyTexture(win.focus.InputField.texture)
-			win.focus.InputField.texture = sdl.CreateTextureFromSurface(win.ui.Renderer, surface)
+			win.focus.Input += text
+			surface := ttf.RenderTextBlended(win.ui.Font, win.focus.Input, 0, sdl.Color{R: 255, G: 255, B: 255, A: 255})
+			sdl.DestroyTexture(win.focus.texture)
+			win.focus.texture = sdl.CreateTextureFromSurface(win.ui.Renderer, surface)
 			sdl.DestroySurface(surface)
 		}
 	}
@@ -484,21 +526,15 @@ func (win *UIWindow) Drop(drop sdl.DropEvent) {
 	actualX := int32(drop.X) - x
 	actualY := int32(drop.Y) - y
 
-	yOffset := float32(0 + win.Padding)
-	for i, c := range win.Components {
-		if c.Type == UIComponentInputField {
-			x1 := win.Padding
-			y1 := int32(yOffset)
-			x2 := x1 + (w - win.Padding*2)
-			y2 := y1 + c.H
-			if actualX >= x1 && actualX <= x2 && actualY >= y1 && actualY <= y2 {
-				win.Components[i].InputField.Input = drop.Data()
-				surface := ttf.RenderTextBlended(win.ui.Font, win.Components[i].InputField.Input, 0, sdl.Color{R: 255, G: 255, B: 255, A: 255})
-				sdl.DestroyTexture(win.Components[i].InputField.texture)
-				win.Components[i].InputField.texture = sdl.CreateTextureFromSurface(win.ui.Renderer, surface)
+	for _, c := range win.hitboxes {
+		if actualX >= c.x1 && actualX <= c.x2 && actualY >= c.y1 && actualY <= c.y2 {
+			if c.component.Type == UIComponentInputField {
+				c.component.Input = drop.Data()
+				surface := ttf.RenderTextBlended(win.ui.Font, c.component.Input, 0, sdl.Color{R: 255, G: 255, B: 255, A: 255})
+				sdl.DestroyTexture(c.component.texture)
+				c.component.texture = sdl.CreateTextureFromSurface(win.ui.Renderer, surface)
 				sdl.DestroySurface(surface)
 			}
 		}
-		yOffset += float32(c.H)
 	}
 }

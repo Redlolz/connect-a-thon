@@ -194,13 +194,13 @@ func (ui *UI) OpenWindowEdit(e *conatho.Entity) {
 		switch attribute.Type {
 		case conatho.DatatypeNumber:
 			value := attribute.Number
-			inputFieldComponent.InputField.Input = strconv.FormatInt(value, 10)
+			inputFieldComponent.Input = strconv.FormatInt(value, 10)
 		case conatho.DatatypeString:
 			value := attribute.String
-			inputFieldComponent.InputField.Input = value
+			inputFieldComponent.Input = value
 		case conatho.DatatypeData:
 			value := attribute.Data
-			inputFieldComponent.InputField.Input = string(value)
+			inputFieldComponent.Input = string(value)
 		}
 	}
 

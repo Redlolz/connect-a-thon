@@ -104,6 +104,8 @@ func main() {
 				ui.MouseUp(event.Button().Button, int32(event.Motion().X), int32(event.Motion().Y))
 			case sdl.EventMouseMotion:
 				ui.MouseMotion(event.Motion().Xrel, event.Motion().Yrel)
+			case sdl.EventMouseWheel:
+				ui.MouseWheel(event.Wheel().Direction, int32(event.Wheel().X), int32(event.Wheel().Y), int32(event.Wheel().MouseX), int32(event.Wheel().MouseY))
 			case sdl.EventKeyDown:
 				ui.KeyDown(event.Key().Key)
 			case sdl.EventTextInput:

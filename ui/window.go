@@ -57,6 +57,8 @@ type UIWindow struct {
 	W int32
 	H int32
 
+	ScrollY int32
+
 	WindowPadding    int32
 	ComponentPadding int32
 	ComponentMargin  int32
@@ -334,7 +336,11 @@ func (win *UIWindow) RenderWindow() {
 		x = rendererW/2 - (w / 2)
 		y = rendererH/2 - (h / 2)
 	}
+
 	winRect := sdl.FRect{X: float32(x), Y: float32(y), W: float32(w), H: float32(h)}
+	sdl.SetRenderClipRect(win.ui.Renderer, &sdl.Rect{X: x, Y: y, W: w, H: h})
+
+	y += win.ScrollY
 
 	sdl.SetRenderDrawColor(win.ui.Renderer, 0, 0, 0, 255)
 	sdl.RenderFillRect(win.ui.Renderer, &winRect)
@@ -421,6 +427,8 @@ func (win *UIWindow) RenderWindow() {
 		}
 	}
 
+	sdl.SetRenderClipRect(win.ui.Renderer, nil)
+
 	if win.focus != nil {
 		switch win.focus.Type {
 		case UIComponentComboBox:
@@ -447,6 +455,13 @@ func (win *UIWindow) MouseDown(button uint8, mouseX, mouseY int32) {
 		x = rendererW/2 - (w / 2)
 		y = rendererH/2 - (h / 2)
 	}
+
+	// Check if in bounds of window
+	if !(mouseX >= x && mouseX <= (x+w) && mouseY >= y && mouseY <= (y+h)) {
+		return
+	}
+
+	y += win.ScrollY
 
 	actualX := mouseX - x
 	actualY := mouseY - y
@@ -483,6 +498,28 @@ func (win *UIWindow) MouseDown(button uint8, mouseX, mouseY int32) {
 				win.focus = c.component
 			}
 			break
+		}
+	}
+}
+
+func (win *UIWindow) MouseWheel(direction sdl.MouseWheelDirection, x, y, mouseX, mouseY int32) {
+	winX := win.X
+	winY := win.Y
+	winW := win.W
+	winH := win.H
+
+	if win.Center {
+		var rendererW int32
+		var rendererH int32
+		sdl.GetRenderOutputSize(win.ui.Renderer, &rendererW, &rendererH)
+		winX = rendererW/2 - (winW / 2)
+		winY = rendererH/2 - (winH / 2)
+	}
+
+	if mouseX >= winX && mouseX <= (winX+winW) && mouseY >= winY && mouseY <= (winY+winH) {
+		win.ScrollY += y * 20
+		if win.ScrollY > 0 {
+			win.ScrollY = 0
 		}
 	}
 }

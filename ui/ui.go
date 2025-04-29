@@ -395,10 +395,8 @@ func (ui *UI) MakeMenuBar() {
 					MenuBarSubMenuItem{
 						Name: "New",
 						Function: func() {
-							fmt.Println("New")
 							callback := sdl.NewDialogFileCallback(func(userdata unsafe.Pointer, filelist []string, filter int32) {
 								if len(filelist) > 0 {
-									fmt.Println(filelist[0])
 									con, err := conatho.New(filelist[0])
 									if err != nil {
 										fmt.Println(err)
@@ -417,10 +415,8 @@ func (ui *UI) MakeMenuBar() {
 					MenuBarSubMenuItem{
 						Name: "Open",
 						Function: func() {
-							fmt.Println("Open")
 							callback := sdl.NewDialogFileCallback(func(userdata unsafe.Pointer, filelist []string, filter int32) {
 								if len(filelist) > 0 {
-									fmt.Println(filelist[0])
 									ui.LoadConatho(filelist[0])
 								}
 							})
@@ -445,7 +441,6 @@ func (ui *UI) MakeMenuBar() {
 					MenuBarSubMenuItem{
 						Name: "New Type",
 						Function: func() {
-							fmt.Println("Create New Type")
 							if ui.Conatho != nil {
 								ui.OpenWindowCreateType()
 							}
@@ -536,8 +531,6 @@ func (ui *UI) MakeMenuBar() {
 	sdl.SetRenderTarget(ui.Renderer, nil)
 
 	ui.menuBar.Height = menuBarHeight
-
-	fmt.Println(ui.menuBar)
 }
 
 func (ui *UI) InMenuBar(mouseX, mouseY int32) (bool, int) {
@@ -638,6 +631,12 @@ func (ui *UI) MouseUp(button uint8, mouseX, mouseY int32) {
 
 func (ui *UI) MouseMotion(relX, relY float32) {
 	ui.MouseMotionCanvas(relX, relY)
+}
+
+func (ui *UI) MouseWheel(direction sdl.MouseWheelDirection, x, y, mouseX, mouseY int32) {
+	if ui.window != nil {
+		ui.window.MouseWheel(direction, x, y, mouseX, mouseY)
+	}
 }
 
 func (ui *UI) KeyDown(key sdl.Keycode) {

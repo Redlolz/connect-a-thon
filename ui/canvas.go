@@ -51,20 +51,24 @@ func (ui *UI) MouseDownCanvas(button uint8, mouseX, mouseY int32) {
 	actualY := mouseY - ui.GlobalY
 
 	if button == 1 && ui.action == ActionEntityMenu {
-		thing := ui.InEntityMenu(ui.selectedEntity, float32(actualX), float32(actualY))
-		switch thing {
-		case MenuItemEdit:
-			ui.action = ActionNone
-			ui.OpenWindowEdit(ui.selectedEntity)
-		case MenuItemSelectImage:
-			ui.action = ActionNone
-			ui.OpenWindowImageSelect()
-		case MenuItemDelete:
-			err := ui.selectedEntity.Delete()
-			if err != nil {
-				panic(err.Error())
+		thing, ok := ui.InEntityMenu(ui.selectedEntity, actualX, actualY)
+		if ok {
+			switch thing {
+			case MenuItemEdit:
+				ui.action = ActionNone
+				ui.OpenWindowEdit(ui.selectedEntity)
+			case MenuItemSelectImage:
+				ui.action = ActionNone
+				ui.OpenWindowImageSelect()
+			case MenuItemDelete:
+				err := ui.selectedEntity.Delete()
+				if err != nil {
+					panic(err.Error())
+				}
+			default:
+				ui.action = ActionNone
 			}
-		default:
+		} else {
 			ui.action = ActionNone
 		}
 	} else if button == 1 {

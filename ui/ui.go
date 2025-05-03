@@ -80,8 +80,7 @@ type UI struct {
 
 	window *UIWindow
 
-	entityMenu      *sdl.Texture
-	entityMenuItems map[MenuItem]entityMenuItem
+	entityMenu *sdl.Texture
 
 	menuBar            MenuBar
 	menuBarOpenSubMenu int
@@ -106,8 +105,6 @@ func NewUI(window *sdl.Window, renderer *sdl.Renderer, textEngine *ttf.TextEngin
 		ThumbnailCache: make(map[uuid.UUID]*sdl.Texture),
 
 		action: ActionNone,
-
-		entityMenuItems: make(map[MenuItem]entityMenuItem),
 	}
 
 	(&ui).MakeMenuBar()
@@ -369,21 +366,72 @@ func initBackgroundTexture(renderer *sdl.Renderer) *sdl.Texture {
 	return tex
 }
 
-func (c *UI) renderBackground() {
-	if backgroundTexture == nil {
-		backgroundTexture = initBackgroundTexture(c.Renderer)
-	}
+func (ui *UI) renderBackground() {
 	var rendererWidth int32
 	var rendererHeight int32
-	sdl.GetRenderOutputSize(c.Renderer, &rendererWidth, &rendererHeight)
+
+	if backgroundTexture == nil {
+		backgroundTexture = initBackgroundTexture(ui.Renderer)
+	}
+	sdl.GetRenderOutputSize(ui.Renderer, &rendererWidth, &rendererHeight)
+
 	dstrect := sdl.FRect{
-		X: float32(c.GlobalX%backgroundTexture.W - backgroundTexture.W),
-		Y: float32(c.GlobalY%backgroundTexture.H - backgroundTexture.H),
+		X: float32(ui.GlobalX%backgroundTexture.W - backgroundTexture.W),
+		Y: float32(ui.GlobalY%backgroundTexture.H - backgroundTexture.H),
 		W: float32(rendererWidth + (backgroundTexture.W * 2)),
 		H: float32(rendererHeight + (backgroundTexture.H * 2)),
 	}
-	// srcrect := sdl.FRect{X: xOffset, Y: yOffset, W: 15, H: 15}
-	sdl.RenderTextureTiled(c.Renderer, backgroundTexture, nil, 1.0, &dstrect)
+
+	sdl.RenderTextureTiled(ui.Renderer, backgroundTexture, nil, 1.0, &dstrect)
+}
+
+func GenerateMenuTexture(renderer *sdl.Renderer, font *ttf.Font, items []string, padding int32, fg, bg sdl.Color) *sdl.Texture {
+	var itemTextures []*sdl.Texture
+	var subMenuWidth int32
+	var subMenuHeight int32
+
+	for _, item := range items {
+		surface := ttf.RenderTextBlended(font, item, 0, fg)
+		itemTextures = append(itemTextures, sdl.CreateTextureFromSurface(renderer, surface))
+		if surface.W+padding*2 > subMenuWidth {
+			subMenuWidth = surface.W + padding*2
+		}
+		subMenuHeight += surface.H + padding*2
+		sdl.DestroySurface(surface)
+	}
+
+	menuTexture := sdl.CreateTexture(renderer, sdl.PixelFormatRGBA8888,
+		sdl.TextureAccessTarget, subMenuWidth, subMenuHeight)
+	sdl.SetRenderTarget(renderer, menuTexture)
+
+	sdl.SetRenderDrawColor(renderer, bg.R, bg.G, bg.B, bg.A)
+	sdl.RenderClear(renderer)
+
+	y := float32(padding)
+	for i, itemTexture := range itemTextures {
+		rect := sdl.FRect{
+			X: 0,
+			Y: float32(i * int(itemTexture.H+padding*2)),
+			W: float32(subMenuWidth),
+			H: float32(itemTexture.H + padding*2),
+		}
+
+		sdl.SetRenderDrawColor(renderer, fg.R, fg.G, fg.B, fg.A)
+		sdl.RenderRect(renderer, &rect)
+
+		sdl.RenderTexture(renderer, itemTexture, nil, &sdl.FRect{
+			X: float32(padding),
+			Y: rect.Y + float32(padding),
+			W: float32(itemTexture.W),
+			H: float32(itemTexture.H),
+		})
+
+		y += float32(itemTexture.H + padding)
+		sdl.DestroyTexture(itemTexture)
+	}
+	sdl.SetRenderTarget(renderer, nil)
+
+	return menuTexture
 }
 
 func (ui *UI) MakeMenuBar() {
@@ -457,45 +505,13 @@ func (ui *UI) MakeMenuBar() {
 	var menuBarHeight int32
 
 	for i, subMenu := range ui.menuBar.SubMenus {
-		var itemTextures []*sdl.Texture
-		var subMenuWidth int32
-		var subMenuHeight int32
+		var itemNames []string
 		for _, item := range subMenu.Items {
-			surface := ttf.RenderTextBlended(ui.Font, item.Name, 0, sdl.Color{R: 255, G: 255, B: 255, A: 255})
-			itemTextures = append(itemTextures, sdl.CreateTextureFromSurface(ui.Renderer, surface))
-			if surface.W+ui.menuBar.Padding*2 > subMenuWidth {
-				subMenuWidth = surface.W + ui.menuBar.Padding*2
-			}
-			subMenuHeight += surface.H + ui.menuBar.Padding*2
-			sdl.DestroySurface(surface)
+			itemNames = append(itemNames, item.Name)
 		}
-
-		subMenuTexture := sdl.CreateTexture(ui.Renderer, sdl.PixelFormatRGBA8888,
-			sdl.TextureAccessTarget, subMenuWidth, subMenuHeight)
-		sdl.SetRenderTarget(ui.Renderer, subMenuTexture)
-		sdl.SetRenderDrawColor(ui.Renderer, 0, 0, 0, 255)
-		sdl.RenderClear(ui.Renderer)
-		y := float32(ui.menuBar.Padding)
-		for i, itemTexture := range itemTextures {
-			rect := sdl.FRect{
-				X: 0,
-				Y: float32(i * int(itemTexture.H+ui.menuBar.Padding*2)),
-				W: float32(subMenuWidth),
-				H: float32(itemTexture.H + ui.menuBar.Padding*2),
-			}
-			sdl.SetRenderDrawColor(ui.Renderer, 255, 255, 255, 255)
-			sdl.RenderRect(ui.Renderer, &rect)
-			sdl.RenderTexture(ui.Renderer, itemTexture, nil, &sdl.FRect{
-				X: float32(ui.menuBar.Padding),
-				Y: rect.Y + float32(ui.menuBar.Padding),
-				W: float32(itemTexture.W),
-				H: float32(itemTexture.H),
-			})
-			y += float32(itemTexture.H + ui.menuBar.Padding)
-			sdl.DestroyTexture(itemTexture)
-		}
-		sdl.SetRenderTarget(ui.Renderer, nil)
-		ui.menuBar.SubMenus[i].texture = subMenuTexture
+		ui.menuBar.SubMenus[i].texture = GenerateMenuTexture(ui.Renderer, ui.Font,
+			itemNames, ui.menuBar.Padding,
+			sdl.Color{R: 255, G: 255, B: 255, A: 255}, sdl.Color{R: 0, G: 0, B: 0, A: 255})
 
 		// Menu bar texture
 		surface := ttf.RenderTextBlended(ui.Font, subMenu.Name, 0, sdl.Color{R: 255, G: 255, B: 255, A: 255})
@@ -545,7 +561,7 @@ func (ui *UI) InMenuBar(mouseX, mouseY int32) (bool, int) {
 	return false, 0
 }
 
-func (ui *UI) InSubMenu(subMenuIndex int, mouseX, mouseY int32) (bool, int) {
+func (ui *UI) InSubMenu(subMenuIndex int, mouseX, mouseY int32) (int, bool) {
 	subMenu := ui.menuBar.SubMenus[subMenuIndex]
 
 	x1 := subMenu.X1
@@ -554,16 +570,16 @@ func (ui *UI) InSubMenu(subMenuIndex int, mouseX, mouseY int32) (bool, int) {
 	y2 := y1 + subMenu.texture.H
 
 	if mouseX > x1 && mouseY > y1 && mouseX < x2 && mouseY < y2 {
-		return true, int((mouseY - y1) / (subMenu.texture.H / int32(len(subMenu.Items))))
+		return int((mouseY - y1) / (subMenu.texture.H / int32(len(subMenu.Items)))), true
 	}
-	return false, 0
+	return 0, false
 }
 
 func (ui *UI) MouseDownMenuBar(button uint8, mouseX, mouseY int32) bool {
 	if button == 1 {
 		if ui.action == ActionOpenSubmenu {
 			ui.action = ActionNone
-			if ok, item := ui.InSubMenu(ui.menuBarOpenSubMenu, mouseX, mouseY); ok {
+			if item, ok := ui.InSubMenu(ui.menuBarOpenSubMenu, mouseX, mouseY); ok {
 				ui.menuBar.SubMenus[ui.menuBarOpenSubMenu].Items[item].Function()
 				return true
 			}

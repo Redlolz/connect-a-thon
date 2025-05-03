@@ -11,26 +11,18 @@ import (
 	_ "embed"
 )
 
-type entityMenuItem struct {
-	X1 float32
-	Y1 float32
-	X2 float32
-	Y2 float32
-}
-
 type MenuItem int
 
 const (
-	MenuItemNone MenuItem = iota
-	MenuItemSelectImage
+	MenuItemSelectImage MenuItem = iota
 	MenuItemEdit
 	MenuItemDelete
 )
 
-var menuItems = map[MenuItem]string{
-	MenuItemSelectImage: "Select Image",
-	MenuItemEdit:        "Edit",
-	MenuItemDelete:      "Delete",
+var menuItems = []string{
+	"Select Image",
+	"Edit",
+	"Delete",
 }
 
 var menuIconTexture *sdl.Texture
@@ -176,76 +168,23 @@ func (ui *UI) InEntityMenuButton(entities map[uuid.UUID]*conatho.Entity, mouseX,
 	return uuid.UUID{}, nil
 }
 
-func (ui *UI) createEntityMenu() {
-
-	menuWidth := int32(0)
-	menuHeight := int32(0)
-	w := int32(0)
-	h := int32(0)
-
-	for i := MenuItem(1); int(i) <= len(menuItems); i++ {
-		ttf.GetStringSize(ui.Font, menuItems[i], 0, &w, &h)
-		menuHeight += h
-		if w > menuWidth {
-			menuWidth = w
-		}
+func (ui *UI) InEntityMenu(e *conatho.Entity, mouseX, mouseY int32) (MenuItem, bool) {
+	entityX := e.X
+	entityY := e.Y
+	if mouseX >= entityX+ui.EntityPadding+16 &&
+		mouseX <= entityX+ui.entityMenu.W+ui.EntityPadding+16 &&
+		mouseY >= entityY+ui.EntityPadding &&
+		mouseY <= entityY+ui.entityMenu.H+ui.EntityPadding {
+		return MenuItem((mouseY - (entityY + ui.EntityPadding)) / (ui.entityMenu.H / int32(len(menuItems)))), true
 	}
 
-	menuWidth += ui.EntityPadding * 2
-	menuHeight += ui.EntityPadding * 2
-
-	entityMenu := sdl.CreateTexture(ui.Renderer, sdl.PixelFormatRGBA8888, sdl.TextureAccessTarget, menuWidth, menuHeight)
-
-	sdl.SetRenderTarget(ui.Renderer, entityMenu)
-	sdl.SetRenderDrawColor(ui.Renderer, 0, 0, 0, 255)
-	sdl.RenderClear(ui.Renderer)
-
-	sdl.SetRenderDrawColor(ui.Renderer, 255, 255, 255, 255)
-	sdl.RenderRect(ui.Renderer, &sdl.FRect{X: 0, Y: 0, W: float32(menuWidth), H: float32(menuHeight)})
-
-	nextY := float32(ui.EntityPadding)
-	for i := MenuItem(1); int(i) < len(menuItems)+1; i++ {
-		renderedText := ttf.CreateText(ui.TextEngine, ui.Font, menuItems[i], 0)
-		ttf.DrawRendererText(renderedText, float32(ui.EntityPadding), nextY)
-		ttf.DestroyText(renderedText)
-		ttf.GetStringSize(ui.Font, menuItems[i], 0, &w, &h)
-
-		if i != 1 {
-			sdl.RenderLine(ui.Renderer, 0, nextY, float32(menuWidth), nextY)
-		}
-
-		ui.entityMenuItems[i] = entityMenuItem{
-			X1: 0,
-			Y1: nextY,
-			X2: float32(menuWidth),
-			Y2: nextY + float32(h),
-		}
-
-		nextY += float32(h)
-	}
-
-	sdl.SetRenderTarget(ui.Renderer, nil)
-	ui.entityMenu = entityMenu
-}
-
-func (ui *UI) InEntityMenu(e *conatho.Entity, mouseX, mouseY float32) MenuItem {
-	entityX := float32(e.X)
-	entityY := float32(e.Y)
-	for s, i := range ui.entityMenuItems {
-		if mouseX >= entityX+i.X1+float32(ui.EntityPadding)+16 &&
-			mouseX <= entityX+i.X2+float32(ui.EntityPadding)+16 &&
-			mouseY >= entityY+i.Y1+float32(ui.EntityPadding) &&
-			mouseY <= entityY+i.Y2+float32(ui.EntityPadding) {
-			return s
-		}
-	}
-
-	return MenuItemNone
+	return 0, false
 }
 
 func (ui *UI) RenderEntityMenu(e *conatho.Entity) {
 	if ui.entityMenu == nil {
-		ui.createEntityMenu()
+		ui.entityMenu = GenerateMenuTexture(ui.Renderer, ui.Font, menuItems, 4,
+			sdl.Color{R: 255, G: 255, B: 255, A: 255}, sdl.Color{R: 0, G: 0, B: 0, A: 255})
 	}
 	x := float32(e.X + ui.GlobalX)
 	y := float32(e.Y + ui.GlobalY)
